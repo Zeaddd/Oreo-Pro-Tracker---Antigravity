@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Oreo Pro Dashboard</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRS9BMY=" crossorigin=""/>
+    
+    <style>
+        /* Apple 2026 "Liquid Glass" Design Language */
+        :root {
+            --apple-blue: #007AFF;
+            --apple-green: #34C759;
+            --apple-red: #FF3B30;
+            --apple-orange: #FF9500;
+            --glass-bg: rgba(255, 255, 255, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.4);
+            --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+            --text-primary: #1C1C1E;
+            --text-secondary: #8E8E93;
+            --blur: 16px;
+            --radius: 24px;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            background: #f2f2f7;
+            color: var(--text-primary);
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Glassmorphic Components */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(var(--blur));
+            -webkit-backdrop-filter: blur(var(--blur));
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            border-radius: var(--radius);
+        }
+
+        /* Distance Banner */
+        #distance-banner {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 400px;
+            padding: 16px 20px;
+            z-index: 1000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .distance-info h2 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .distance-info span {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--apple-green);
+            background: rgba(52, 199, 89, 0.15);
+            padding: 4px 10px;
+            border-radius: 12px;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--apple-green);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        /* Status Grid */
+        #status-grid {
+            position: absolute;
+            top: 100px; /* Below distance banner */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 400px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            z-index: 1000;
+        }
+
+        .status-card {
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+        }
+
+        .status-card .label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-card .value {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .status-pill {
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        .status-pill.gps-fix { background: rgba(52, 199, 89, 0.2); color: var(--apple-green); }
+        .status-pill.gps-search { background: rgba(255, 149, 0, 0.2); color: var(--apple-orange); animation: pulse-opacity 1.5s infinite; }
+        
+        /* Command Center - Bottom Bar */
+        #command-center {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 400px;
+            padding: 10px;
+            z-index: 1000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .cmd-btn {
+            background: transparent;
+            border: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            width: 25%;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .cmd-btn:active {
+            transform: scale(0.9);
+        }
+
+        .cmd-icon-box {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            transition: background 0.2s;
+        }
+
+        .cmd-btn.active .cmd-icon-box {
+            background: var(--apple-blue);
+            color: white;
+        }
+
+        .cmd-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        /* Smart Fence Toggle */
+        .fence-toggle-container {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Critical Alert UI */
+        .critical-alert {
+            animation: flash-red 1s infinite;
+        }
+
+        /* Animations */
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 199, 89, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(52, 199, 89, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 199, 89, 0); }
+        }
+
+        @keyframes pulse-opacity {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+
+        @keyframes flash-red {
+            0%, 100% { box-shadow: inset 0 0 0 0px var(--apple-red); }
+            50% { box-shadow: inset 0 0 0 20px rgba(255, 59, 48, 0.5); }
+        }
+
+        /* Typography & Icons Helper */
+        .icon { font-style: normal; }
+
+        /* Floating Action Menu (FAM) */
+        #fam-container {
+            position: absolute;
+            bottom: 110px;
+            right: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .fab {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--glass-bg);
+            backdrop-filter: blur(var(--blur));
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        
+        .fab.active-fence {
+            background: var(--apple-blue);
+            color: white;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Map Container -->
+    <div id="map"></div>
+
+    <!-- Distance Banner -->
+    <div id="distance-banner" class="glass-panel">
+        <div class="distance-info">
+            <span>Distance</span>
+            <h2 id="distance-val">-- m</h2>
+        </div>
+        <div class="live-indicator" id="conn-status">
+            <div class="pulse-dot" id="conn-dot"></div>
+            <span id="conn-text">LIVE</span>
+        </div>
+    </div>
+
+    <!-- Status Grid -->
+    <div id="status-grid">
+        <div class="status-card glass-panel">
+            <span class="label">Battery</span>
+            <div class="value" id="bat-val">--%</div>
+        </div>
+        <div class="status-card glass-panel">
+            <span class="label">GPS Signal</span>
+            <div class="value"><span class="status-pill gps-search" id="gps-val">SEARCHING</span></div>
+        </div>
+        <div class="status-card glass-panel">
+            <span class="label">Satellites</span>
+            <div class="value" id="sats-val">0</div>
+        </div>
+        <div class="status-card glass-panel">
+            <span class="label">Cell Signal</span>
+            <div class="value" id="csq-val">--</div>
+        </div>
+    </div>
+
+    <!-- FAM: Center Map & Fence Toggle -->
+    <div id="fam-container">
+        <div class="fab" id="btn-fence" onclick="toggleFence()">🛡️</div>
+        <div class="fab" onclick="centerMap()">📍</div>
+    </div>
+
+    <!-- Command Center -->
+    <div id="command-center" class="glass-panel">
+        <button class="cmd-btn" id="btn-home" onclick="setMode('HOME')">
+            <div class="cmd-icon-box">🏠</div>
+            <span class="cmd-label">HOME</span>
+        </button>
+        <button class="cmd-btn" id="btn-walk" onclick="setMode('WALK')">
+            <div class="cmd-icon-box">🐕</div>
+            <span class="cmd-label">WALK</span>
+        </button>
+        <button class="cmd-btn" id="btn-lost" onclick="setMode('LOST')">
+            <div class="cmd-icon-box" style="color: var(--apple-red);">🚨</div>
+            <span class="cmd-label" style="color: var(--apple-red);">LOST</span>
+        </button>
+        <button class="cmd-btn" id="btn-save" onclick="setMode('SAVE')">
+            <div class="cmd-icon-box">🔋</div>
+            <span class="cmd-label">SAVE</span>
+        </button>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+
+    <script>
+        // --- Configuration ---
+        const MQTT_HOST = "broker.hivemq.com";
+        const MQTT_PORT = 8884; // WebSocket SSL Port
+        const SUB_TOPIC = "Oreo_Safe_Tracker/data";
+        const PUB_TOPIC = "Oreo_Safe_Tracker/setMode";
+        const GEOFENCE_RADIUS = 60; // meters
+
+        // --- State ---
+        let map, oreoMarker, userMarker, fenceCircle;
+        let oreoPos = null;
+        let userPos = null;
+        let isFenceActive = false;
+        let lastHeartbeat = Date.now();
+        let heartbeatTimer = null;
+        let currentMode = "HOME";
+
+        // --- Initialization ---
+        function init() {
+            initMap();
+            initMQTT();
+            startHeartbeatMonitor();
+            startUserLocation();
+        }
+
+        // --- Map Setup ---
+        function initMap() {
+            // Default center (will update)
+            map = L.map('map', { zoomControl: false }).setView([0, 0], 2);
+
+            // Voyager Tiles (Clean, minimalist)
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            }).addTo(map);
+
+            // Custom Icons
+            const oreoIcon = L.divIcon({
+                className: 'oreo-marker',
+                html: '<div style="background-color: #007AFF; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.3);"></div>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+
+            const userIcon = L.divIcon({
+                className: 'user-marker',
+                html: '<div style="background-color: #34C759; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.3);"></div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            });
+
+            oreoMarker = L.marker([0, 0], { icon: oreoIcon }).addTo(map);
+            
+            // Geofence Circle (Hidden by default)
+            fenceCircle = L.circle([0, 0], {
+                color: '#FF3B30',
+                fillColor: '#FF3B30',
+                fillOpacity: 0.1,
+                radius: GEOFENCE_RADIUS
+            }).addTo(map);
+            fenceCircle.setStyle({ opacity: 0, fillOpacity: 0 }); // Hide initially
+        }
+
+        function startUserLocation() {
+            if ("geolocation" in navigator) {
+                map.locate({ setView: true, maxZoom: 16, watch: true });
+                
+                map.on('locationfound', function(e) {
+                    userPos = e.latlng;
+                    if (!userMarker) {
+                         const userIcon = L.divIcon({
+                            className: 'user-marker',
+                            html: '<div style="background-color: #34C759; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.3);"></div>',
+                            iconSize: [20, 20],
+                            iconAnchor: [10, 10]
+                        });
+                        userMarker = L.marker(e.latlng, {icon: userIcon}).addTo(map);
+                    } else {
+                        userMarker.setLatLng(e.latlng);
+                    }
+                    updateDistance();
+                });
+            }
+        }
+
+        // --- MQTT Setup ---
+        let client;
+        function initMQTT() {
+            const clientId = "Oreo_Web_" + Math.random().toString(16).substr(2, 8);
+            client = new Paho.MQTT.Client(MQTT_HOST, MQTT_PORT, clientId);
+
+            client.onConnectionLost = onConnectionLost;
+            client.onMessageArrived = onMessageArrived;
+
+            client.connect({
+                useSSL: true,
+                onSuccess: onConnect,
+                onFailure: (e) => console.error("MQTT Connect Failed", e)
+            });
+        }
+
+        function onConnect() {
+            console.log("MQTT Connected");
+            client.subscribe(SUB_TOPIC);
+            setConnectionStatus(true);
+        }
+
+        function onConnectionLost(responseObject) {
+            if (responseObject.errorCode !== 0) {
+                console.log("onConnectionLost:" + responseObject.errorMessage);
+                setConnectionStatus(false);
+                // Auto reconnect after 5s
+                setTimeout(initMQTT, 5000);
+            }
+        }
+
+        function onMessageArrived(message) {
+            try {
+                const payload = JSON.parse(message.payloadString);
+                console.log("Data:", payload);
+                processData(payload);
+            } catch (e) {
+                console.error("JSON Parse Error", e);
+            }
+        }
+
+        function sendCommand(msg) {
+            if (!client || !client.isConnected()) return;
+            const message = new Paho.MQTT.Message(msg);
+            message.destinationName = PUB_TOPIC;
+            client.send(message);
+        }
+
+        // --- Logic & UI Updates ---
+        function processData(data) {
+            // Heartbeat
+            lastHeartbeat = Date.now();
+            setConnectionStatus(true);
+
+            // Location
+            if (data.lat && data.lng) {
+                const newPos = L.latLng(data.lat, data.lng);
+                oreoPos = newPos;
+                oreoMarker.setLatLng(newPos);
+                
+                // If this is the first fix/update, zoom to it if user not found yet
+                if (!userPos) {
+                    map.setView(newPos, 16);
+                }
+
+                checkGeofence();
+                updateDistance();
+            }
+
+            // Statuses
+            if (data.gps) {
+                const el = document.getElementById('gps-val');
+                el.innerText = data.gps;
+                el.className = `status-pill ${data.gps === 'FIX' ? 'gps-fix' : 'gps-search'}`;
+            }
+
+            if (data.sats) document.getElementById('sats-val').innerText = data.sats;
+
+            if (data.bat) {
+                // simple mapping 3.4-4.2V to 0-100%
+                const volt = parseFloat(data.bat); // assuming raw string like "3.8" or handled elsewhere
+                // If it's already % in JSON, use it. But request said "Convert voltage".
+                // Let's assume input is voltage if < 5, else percentage.
+                let pct = volt;
+                if (volt < 5) {
+                    pct = Math.min(100, Math.max(0, ((volt - 3.4) / (4.2 - 3.4)) * 100));
+                }
+                document.getElementById('bat-val').innerText = Math.round(pct) + '%';
+            }
+
+            if (data.csq) {
+                const csq = parseInt(data.csq);
+                let bars = 0;
+                if (csq > 20) bars = 4;
+                else if (csq > 15) bars = 3;
+                else if (csq > 10) bars = 2;
+                else if (csq > 0) bars = 1;
+                
+                // Visual bars representation
+                let barStr = "I".repeat(bars);
+                document.getElementById('csq-val').innerText = barStr || "No Sig";
+            }
+
+            if (data.mode) {
+                currentMode = data.mode;
+                updateModeUI();
+            }
+        }
+
+        // --- Helper Functions ---
+        function setConnectionStatus(isOnline) {
+            const dot = document.getElementById('conn-dot');
+            const text = document.getElementById('conn-text');
+            const indicator = document.getElementById('conn-status');
+
+            if (isOnline) {
+                dot.style.backgroundColor = 'var(--apple-green)';
+                dot.style.animation = 'pulse 2s infinite';
+                text.innerText = "LIVE";
+                indicator.style.color = 'var(--apple-green)';
+                indicator.style.background = 'rgba(52, 199, 89, 0.15)';
+            } else {
+                dot.style.backgroundColor = 'var(--apple-red)';
+                dot.style.animation = 'none';
+                text.innerText = "OFFLINE";
+                indicator.style.color = 'var(--apple-red)';
+                indicator.style.background = 'rgba(255, 59, 48, 0.15)';
+            }
+        }
+
+        function startHeartbeatMonitor() {
+            if (heartbeatTimer) clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(() => {
+                const diff = (Date.now() - lastHeartbeat) / 1000;
+                if (diff > 120) {
+                    setConnectionStatus(false);
+                }
+            }, 5000);
+        }
+
+        function updateDistance() {
+            if (oreoPos && userPos) {
+                const dist = map.distance(oreoPos, userPos); // Leaflet built-in
+                document.getElementById('distance-val').innerText = Math.round(dist) + " m";
+            }
+        }
+
+        function toggleFence() {
+            isFenceActive = !isFenceActive;
+            const btn = document.getElementById('btn-fence');
+            if (isFenceActive) {
+                btn.classList.add('active-fence');
+                // Set fence center to current Oreo Position or User? 
+                // Context implies "Safe Zone", usually around home or current spot. 
+                // Let's assume we set it around where Oreo IS right now.
+                if (oreoPos) {
+                    fenceCircle.setLatLng(oreoPos);
+                    fenceCircle.setStyle({ opacity: 1, fillOpacity: 0.1 });
+                    // Optional: Center map on fence
+                    map.setView(oreoPos, 16);
+                } else {
+                    alert("Wait for Oreo's location header to set Fence.");
+                    isFenceActive = false;
+                    btn.classList.remove('active-fence');
+                }
+            } else {
+                btn.classList.remove('active-fence');
+                fenceCircle.setStyle({ opacity: 0, fillOpacity: 0 });
+                document.body.classList.remove('critical-alert');
+            }
+        }
+
+        function checkGeofence() {
+            if (!isFenceActive || !oreoPos) return;
+            
+            // Re-calc distance from center of fence
+            const fenceCenter = fenceCircle.getLatLng();
+            const dist = map.distance(oreoPos, fenceCenter);
+            
+            if (dist > GEOFENCE_RADIUS) {
+                document.body.classList.add('critical-alert');
+                // You might want to sound an alarm or change UI color
+            } else {
+                document.body.classList.remove('critical-alert');
+            }
+        }
+
+        function setMode(mode) {
+            sendCommand(mode);
+            // Optimistic UI update
+            currentMode = mode;
+            updateModeUI();
+        }
+
+        function updateModeUI() {
+            // Reset all
+            ['btn-home', 'btn-walk', 'btn-lost', 'btn-save'].forEach(id => {
+                document.getElementById(id).classList.remove('active');
+            });
+            
+            const mapId = {
+                'HOME': 'btn-home',
+                'WALK': 'btn-walk',
+                'LOST': 'btn-lost',
+                'SAVE': 'btn-save'
+            };
+            
+            if (mapId[currentMode]) {
+                document.getElementById(mapId[currentMode]).classList.add('active');
+            }
+        }
+
+        function centerMap() {
+            if (oreoPos) {
+                map.flyTo(oreoPos, 17);
+            }
+        }
+
+        // Start
+        window.onload = init;
+
+    </script>
+</body>
+</html>
