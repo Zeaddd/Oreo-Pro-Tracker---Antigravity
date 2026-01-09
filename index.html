@@ -308,6 +308,83 @@
             background: var(--apple-blue);
             color: white;
         }
+
+        /* Radar UI */
+        #radar-panel {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            width: 85%;
+            max-width: 320px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 2000;
+        }
+
+        #radar-panel.active {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+            pointer-events: all;
+        }
+
+        .signal-meter-container {
+            width: 100%;
+            height: 24px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .signal-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--apple-red), var(--apple-orange), var(--apple-green));
+            transition: width 0.3s ease-out;
+            border-radius: 12px;
+        }
+
+        .radar-status {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-align: center;
+        }
+
+        .radar-value {
+            font-size: 42px;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+            margin: 10px 0;
+            background: -webkit-linear-gradient(45deg, var(--apple-blue), var(--apple-green));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .close-radar {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(0, 0, 0, 0.1);
+            border: none;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 14px;
+        }
     </style>
 </head>
 
@@ -350,8 +427,26 @@
 
     <!-- FAM: Center Map & Fence Toggle -->
     <div id="fam-container">
+        <div class="fab" id="btn-radar" onclick="toggleRadarUI()">📡</div>
         <div class="fab" id="btn-fence" onclick="toggleFence()">🛡️</div>
         <div class="fab" onclick="centerMap()">📍</div>
+    </div>
+
+    <!-- Bluetooth Radar Panel -->
+    <div id="radar-panel" class="glass-panel">
+        <button class="close-radar" onclick="toggleRadarUI()">✕</button>
+        <div class="radar-status" id="radar-msg">Ready to Scan</div>
+        <div class="radar-value" id="radar-rssi">--</div>
+
+        <div class="signal-meter-container">
+            <div class="signal-bar" id="radar-bar"></div>
+        </div>
+
+        <button class="status-pill gps-fix" id="btn-scan"
+            style="border:none; padding: 10px 24px; font-size:14px; margin-top:10px; cursor:pointer;"
+            onclick="startScan()">
+            FIND OREO
+        </button>
     </div>
 
     <!-- Command Center -->
@@ -396,6 +491,10 @@
         let lastHeartbeat = Date.now();
         let heartbeatTimer = null;
         let currentMode = "HOME";
+
+        // Bluetooth State
+        let bleDevice = null;
+        let bleWatchId = null;
 
         // --- Initialization ---
         function init() {
@@ -682,6 +781,78 @@
             if (oreoPos) {
                 map.flyTo(oreoPos, 17);
             }
+        }
+
+        // --- Bluetooth Logic ---
+        function toggleRadarUI() {
+            const panel = document.getElementById('radar-panel');
+            panel.classList.toggle('active');
+
+            // If closing, stop scan to save battery? Optional.
+            // For now keep it running if active.
+        }
+
+        async function startScan() {
+            try {
+                updateRadarStatus("Scanning...", "--");
+
+                // Request Device with specific name prefix
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'OREO_PRO_TAG' }],
+                    optionalServices: [] // Add services if we needed to connect
+                });
+
+                updateRadarStatus("Found!", "...");
+
+                // Watch Advertisements (RSSI updates without connecting)
+                // Note: Experimental feature, check support
+                if (bleDevice.watchAdvertisements) {
+                    await bleDevice.watchAdvertisements();
+                    bleDevice.addEventListener('advertisementreceived', handleAdvertisement);
+                    updateRadarStatus("Tracking Signal...", "SEARCH");
+                } else {
+                    // Fallback: Connect and poll RSSI (More power intensive)
+                    // Simplified: Just show connected for now as fallback
+                    updateRadarStatus("Connected (Legacy)", "OK");
+                    alert("Your browser doesn't support passive RSSI scanning. Please use Chrome/Edge.");
+                }
+
+            } catch (error) {
+                console.error("Bluetooth Error:", error);
+                updateRadarStatus("Error: " + error.message, "ERR");
+            }
+        }
+
+        function handleAdvertisement(event) {
+            const rssi = event.rssi;
+            updateSignalBar(rssi);
+        }
+
+        function updateSignalBar(rssi) {
+            // Typical BLE RSSI: -100 (weak) to -30 (strong)
+            // Clamp and map to 0-100%
+            const minRssi = -100;
+            const maxRssi = -30;
+            let percentage = ((rssi - minRssi) / (maxRssi - minRssi)) * 100;
+            percentage = Math.min(100, Math.max(0, percentage));
+
+            const bar = document.getElementById('radar-bar');
+            bar.style.width = percentage + "%";
+
+            // Text color based on strength
+            const valEl = document.getElementById('radar-rssi');
+            valEl.innerText = rssi + " dBm";
+
+            let status = "COLD ❄️";
+            if (percentage > 70) status = "HOT 🔥";
+            else if (percentage > 40) status = "WARM ☀️";
+
+            document.getElementById('radar-msg').innerText = status;
+        }
+
+        function updateRadarStatus(msg, val) {
+            document.getElementById('radar-msg').innerText = msg;
+            if (val) document.getElementById('radar-rssi').innerText = val;
         }
 
         // Start
