@@ -484,7 +484,7 @@
         const GEOFENCE_RADIUS = 60; // meters
 
         // --- State ---
-        let map, oreoMarker, userMarker, fenceCircle;
+        let map, oreoMarker, userMarker, fenceCircle, locationCircle;
         let oreoPos = null;
         let userPos = null;
         let isFenceActive = false;
@@ -541,6 +541,16 @@
                 radius: GEOFENCE_RADIUS
             }).addTo(map);
             fenceCircle.setStyle({ opacity: 0, fillOpacity: 0 }); // Hide initially
+
+            // Location Circle (LBS Area)
+            locationCircle = L.circle([0, 0], {
+                color: '#FFA500', // Orange
+                dashArray: '10, 10',
+                fillColor: '#FFA500',
+                fillOpacity: 0.2,
+                radius: 500
+            }).addTo(map);
+            locationCircle.setStyle({ opacity: 0, fillOpacity: 0 }); // Hide initially
         }
 
         function startUserLocation() {
@@ -619,53 +629,72 @@
             lastHeartbeat = Date.now();
             setConnectionStatus(true);
 
-            // Location
+            // --- Location Logic ---
             if (data.lat && data.lng) {
-                const newPos = L.latLng(data.lat, data.lng);
+                const lat = parseFloat(data.lat);
+                const lng = parseFloat(data.lng);
+                const newPos = L.latLng(lat, lng);
                 oreoPos = newPos;
                 oreoMarker.setLatLng(newPos);
 
-                // If this is the first fix/update, zoom to it if user not found yet
-                if (!userPos) {
-                    map.setView(newPos, 16);
-                }
+                // Zoom if first fix
+                if (!userPos) map.setView(newPos, 16);
 
                 checkGeofence();
                 updateDistance();
+
+                // LBS vs GPS Visuals
+                if (data.type === 'LBS') {
+                    // Show LBS Circle
+                    locationCircle.setLatLng(newPos);
+                    locationCircle.setRadius(500); // Fixed 500m for LBS
+                    locationCircle.setStyle({ opacity: 1, fillOpacity: 0.2 });
+
+                    // Optional: Change marker color or icon for LBS? 
+                    // User Request: "Show a Blue Marker" (Default is Blue) 
+                    // Main marker is already blue.
+                } else {
+                    // GPS or others -> Hide LBS Circle
+                    locationCircle.setStyle({ opacity: 0, fillOpacity: 0 });
+                }
             }
 
-            // Statuses
+            // --- Status Overlays ---
+            if (data.sats !== undefined) {
+                document.getElementById('sats-val').innerText = data.sats;
+            }
+
             if (data.gps) {
                 const el = document.getElementById('gps-val');
+                // If data.type is LBS, maybe we shouldn't show GPS-FIX?
+                // But sticking to payload data:
                 el.innerText = data.gps;
                 el.className = `status-pill ${data.gps === 'FIX' ? 'gps-fix' : 'gps-search'}`;
             }
 
-            if (data.sats) document.getElementById('sats-val').innerText = data.sats;
-
+            // --- Battery (Voltage to %) ---
             if (data.bat) {
-                // simple mapping 3.4-4.2V to 0-100%
-                const volt = parseFloat(data.bat); // assuming raw string like "3.8" or handled elsewhere
-                // If it's already % in JSON, use it. But request said "Convert voltage".
-                // Let's assume input is voltage if < 5, else percentage.
-                let pct = volt;
-                if (volt < 5) {
-                    pct = Math.min(100, Math.max(0, ((volt - 3.4) / (4.2 - 3.4)) * 100));
-                }
+                // "bat":"4.10"
+                const volt = parseFloat(data.bat);
+                // Simple Linear Mapping: 3.4V (0%) -> 4.2V (100%)
+                let pct = 0;
+                if (volt >= 4.2) pct = 100;
+                else if (volt <= 3.4) pct = 0;
+                else pct = ((volt - 3.4) / (4.2 - 3.4)) * 100;
+
                 document.getElementById('bat-val').innerText = Math.round(pct) + '%';
             }
 
+            // --- Signal Strength (CSQ) ---
             if (data.csq) {
                 const csq = parseInt(data.csq);
-                let bars = 0;
-                if (csq > 20) bars = 4;
-                else if (csq > 15) bars = 3;
-                else if (csq > 10) bars = 2;
-                else if (csq > 0) bars = 1;
-
-                // Visual bars representation
-                let barStr = "I".repeat(bars);
-                document.getElementById('csq-val').innerText = barStr || "No Sig";
+                // Map CSQ (0-31) to bars
+                let bars = "No Sig";
+                if (csq >= 20) bars = "IIII"; // Excellent
+                else if (csq >= 15) bars = "III"; // Good
+                else if (csq >= 10) bars = "II";  // Fair
+                else if (csq > 0) bars = "I";     // Poor
+                document.getElementById('csq-val').innerText = bars;
             }
 
             if (data.mode) {
@@ -829,23 +858,33 @@
         }
 
         function updateSignalBar(rssi) {
-            // Typical BLE RSSI: -100 (weak) to -30 (strong)
-            // Clamp and map to 0-100%
-            const minRssi = -100;
-            const maxRssi = -30;
+            // User Req: RSSI from -95 to -40
+            const minRssi = -95;
+            const maxRssi = -40;
             let percentage = ((rssi - minRssi) / (maxRssi - minRssi)) * 100;
             percentage = Math.min(100, Math.max(0, percentage));
 
             const bar = document.getElementById('radar-bar');
             bar.style.width = percentage + "%";
 
-            // Text color based on strength
+            // Color Logic: Green > -60, Red < -85
+            if (rssi > -60) {
+                bar.style.background = 'var(--apple-green)';
+            } else if (rssi < -85) {
+                bar.style.background = 'var(--apple-red)';
+            } else {
+                // Orange gradient or solid in between?
+                bar.style.background = 'var(--apple-orange)';
+            }
+
             const valEl = document.getElementById('radar-rssi');
             valEl.innerText = rssi + " dBm";
 
-            let status = "COLD ❄️";
-            if (percentage > 70) status = "HOT 🔥";
-            else if (percentage > 40) status = "WARM ☀️";
+            let status = "SEARCHING";
+            if (rssi > -60) status = "HOT 🔥";
+            else if (rssi > -75) status = "WARM ☀️";
+            else if (rssi > -85) status = "COLD ❄️";
+            else status = "FREEZING 🥶";
 
             document.getElementById('radar-msg').innerText = status;
         }
