@@ -229,6 +229,91 @@
             animation: flash-red 1s infinite;
         }
 
+        /* Pin & Animations */
+        .pin-wrapper {
+            position: relative;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .pin-head {
+            width: 40px;
+            height: 40px;
+            background: white;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            box-shadow: -2px 2px 10px rgba(0, 0, 0, 0.2);
+            position: absolute;
+            top: 0;
+            z-index: 2;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        /* Correct image rotation inside the rotated pin */
+        .pin-head img {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+            transform: rotate(45deg);
+        }
+
+        .pin-pulse {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: rgba(0, 122, 255, 0.5);
+            border-radius: 50%;
+            top: 38px;
+            /* Position at the tip/bottom */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1;
+            animation: pinPulse 2s infinite;
+        }
+
+        /* Bounce Animation Class (Triggered via JS) */
+        .bounce-anim {
+            animation: bounce 0.6s ease;
+        }
+
+        @keyframes pinPulse {
+            0% {
+                transform: translateX(-50%) scale(1);
+                opacity: 1;
+            }
+
+            100% {
+                transform: translateX(-50%) scale(5);
+                opacity: 0;
+            }
+        }
+
+        @keyframes bounce {
+
+            0%,
+            20%,
+            50%,
+            80%,
+            100% {
+                transform: translateY(0);
+            }
+
+            40% {
+                transform: translateY(-20px);
+            }
+
+            60% {
+                transform: translateY(-10px);
+            }
+        }
+
         /* Animations */
         @keyframes pulse {
             0% {
@@ -517,11 +602,19 @@
             }).addTo(map);
 
             // Custom Icons
+            // Custom Icons
             const oreoIcon = L.divIcon({
-                className: 'oreo-marker',
-                html: '<div style="background-color: #007AFF; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.3);"></div>',
-                iconSize: [24, 24],
-                iconAnchor: [12, 12]
+                className: 'custom-pin-icon', // Empty class to avoid default styles if needed
+                html: `
+                    <div class="pin-wrapper" id="oreo-pin">
+                        <div class="pin-head">
+                            <img src="https://placedog.net/100/100" alt="Oreo">
+                        </div>
+                        <div class="pin-pulse"></div>
+                    </div>
+                `,
+                iconSize: [50, 50],
+                iconAnchor: [25, 50] // Tip at bottom center
             });
 
             const userIcon = L.divIcon({
@@ -633,9 +726,28 @@
             if (data.lat && data.lng) {
                 const lat = parseFloat(data.lat);
                 const lng = parseFloat(data.lng);
+
+                // Zero-Coordinate Filter
+                if (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001) {
+                    console.warn("Invalid Coordinates (0,0) - Waiting for fix");
+                    const gpsStatus = document.getElementById('gps-val');
+                    gpsStatus.innerText = "WAITING FOR FIX";
+                    gpsStatus.className = "status-pill gps-search";
+                    return; // Ignore update
+                }
+
                 const newPos = L.latLng(lat, lng);
                 oreoPos = newPos;
                 oreoMarker.setLatLng(newPos);
+
+                // Trigger Bounce Animation
+                const pinEl = document.getElementById('oreo-pin');
+                if (pinEl) {
+                    // Reset animation to re-trigger
+                    pinEl.classList.remove('bounce-anim');
+                    void pinEl.offsetWidth; // Trigger reflow
+                    pinEl.classList.add('bounce-anim');
+                }
 
                 // Zoom if first fix
                 if (!userPos) map.setView(newPos, 16);
@@ -736,8 +848,16 @@
 
         function updateDistance() {
             if (oreoPos && userPos) {
-                const dist = map.distance(oreoPos, userPos); // Leaflet built-in
-                document.getElementById('distance-val').innerText = Math.round(dist) + " m";
+                const dist = map.distance(oreoPos, userPos); // Leaflet built-in meters
+                let displayDist = "";
+
+                if (dist < 1000) {
+                    displayDist = Math.round(dist) + " m";
+                } else {
+                    displayDist = (dist / 1000).toFixed(2) + " km";
+                }
+
+                document.getElementById('distance-val').innerText = displayDist;
             }
         }
 
