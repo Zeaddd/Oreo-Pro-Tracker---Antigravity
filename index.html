@@ -207,6 +207,13 @@
             color: white;
         }
 
+        .cmd-btn.pending .cmd-icon-box {
+            background: var(--apple-orange);
+            color: white;
+            opacity: 0.7;
+            animation: pulse-opacity 1.5s infinite;
+        }
+
         .cmd-label {
             font-size: 10px;
             font-weight: 600;
@@ -565,6 +572,8 @@
         const MQTT_HOST = "broker.hivemq.com";
         const MQTT_PORT = 8884; // WebSocket SSL Port
         const SUB_TOPIC = "Oreo_Safe_Tracker/data";
+        const MODE_STATUS_TOPIC = "oreo/mode/status";
+        const MODE_SET_TOPIC = "oreo/mode/set";
         const PUB_TOPIC = "Oreo_Safe_Tracker/setMode";
         const GEOFENCE_RADIUS = 60; // meters
 
@@ -687,6 +696,7 @@
         function onConnect() {
             console.log("MQTT Connected");
             client.subscribe(SUB_TOPIC);
+            client.subscribe(MODE_STATUS_TOPIC);
             setConnectionStatus(true);
         }
 
@@ -700,6 +710,16 @@
         }
 
         function onMessageArrived(message) {
+            // Handle mode status confirmation
+            if (message.destinationName === MODE_STATUS_TOPIC) {
+                const mode = message.payloadString.trim();
+                console.log("Mode Status Confirmed:", mode);
+                currentMode = mode;
+                updateModeUI();
+                return;
+            }
+
+            // Handle regular data messages
             try {
                 const payload = JSON.parse(message.payloadString);
                 console.log("Data:", payload);
@@ -902,23 +922,58 @@
         }
 
         function setMode(mode) {
-            sendCommand(mode);
-            // Optimistic UI update
-            currentMode = mode;
-            updateModeUI();
+            // Publish command to oreo/mode/set
+            if (!client || !client.isConnected()) {
+                console.error("MQTT not connected");
+                return;
+            }
+
+            const modeCommand = mode === 'SAVE' ? 'POWER_SAVING' : mode;
+            const message = new Paho.MQTT.Message(modeCommand);
+            message.destinationName = MODE_SET_TOPIC;
+            client.send(message);
+
+            console.log("Mode command sent:", modeCommand);
+
+            // Set button to pending state
+            setPendingMode(mode);
         }
 
-        function updateModeUI() {
-            // Reset all
+        function setPendingMode(mode) {
+            // Reset all buttons
             ['btn-home', 'btn-walk', 'btn-lost', 'btn-save'].forEach(id => {
-                document.getElementById(id).classList.remove('active');
+                const btn = document.getElementById(id);
+                btn.classList.remove('active', 'pending');
             });
 
+            // Set the clicked button to pending state
             const mapId = {
                 'HOME': 'btn-home',
                 'WALK': 'btn-walk',
                 'LOST': 'btn-lost',
                 'SAVE': 'btn-save'
+            };
+
+            if (mapId[mode]) {
+                document.getElementById(mapId[mode]).classList.add('pending');
+            }
+        }
+
+        function updateModeUI() {
+            // Reset all buttons
+            ['btn-home', 'btn-walk', 'btn-lost', 'btn-save'].forEach(id => {
+                const btn = document.getElementById(id);
+                btn.classList.remove('active', 'pending');
+            });
+
+            // Map mode status to button IDs
+            const mapId = {
+                'HOME': 'btn-home',
+                'WALK': 'btn-walk',
+                'LOST': 'btn-lost',
+                'SAVE': 'btn-save',
+                'POWER_SAVING': 'btn-save',  // Map POWER_SAVING to SAVE button
+                'LIVE': 'btn-walk'  // Map LIVE to WALK button if needed
             };
 
             if (mapId[currentMode]) {
