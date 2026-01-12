@@ -521,6 +521,8 @@
     <div id="fam-container">
         <div class="fab" id="btn-radar" onclick="toggleRadarUI()">📡</div>
         <div class="fab" id="btn-fence" onclick="toggleFence()">🛡️</div>
+        <div class="fab" id="btn-trail" onclick="toggleTrail()">🛤️</div>
+        <div class="fab" onclick="clearTrail()">🗑️</div>
         <div class="fab" onclick="centerMap()">📍</div>
     </div>
 
@@ -590,6 +592,11 @@
         let bleDevice = null;
         let bleWatchId = null;
 
+        // Trail State
+        let trailPath = null;
+        let historyCoords = [];
+        let showTrail = false;
+
         // --- Initialization ---
         function init() {
             initMap();
@@ -653,6 +660,12 @@
                 radius: 500
             }).addTo(map);
             locationCircle.setStyle({ opacity: 0, fillOpacity: 0 }); // Hide initially
+
+            // Trail Polyline
+            trailPath = L.polyline([], {
+                color: 'red',
+                weight: 3
+            }).addTo(map);
         }
 
         function startUserLocation() {
@@ -759,6 +772,14 @@
                 const newPos = L.latLng(lat, lng);
                 oreoPos = newPos;
                 oreoMarker.setLatLng(newPos);
+
+                // Update Trail History
+                historyCoords.push([lat, lng]);
+                if (showTrail) {
+                    trailPath.setLatLngs(historyCoords);
+                } else {
+                    trailPath.setLatLngs([]);
+                }
 
                 // Trigger Bounce Animation
                 const pinEl = document.getElementById('oreo-pin');
@@ -985,6 +1006,26 @@
             if (oreoPos) {
                 map.flyTo(oreoPos, 17);
             }
+        }
+
+        // --- Trail Functions ---
+        function toggleTrail() {
+            showTrail = !showTrail;
+            const btn = document.getElementById('btn-trail');
+
+            if (showTrail) {
+                btn.classList.add('active-fence');
+                trailPath.setLatLngs(historyCoords);
+            } else {
+                btn.classList.remove('active-fence');
+                trailPath.setLatLngs([]);
+            }
+        }
+
+        function clearTrail() {
+            historyCoords = [];
+            trailPath.setLatLngs([]);
+            console.log("Trail history cleared");
         }
 
         // --- Bluetooth Logic ---
