@@ -586,7 +586,7 @@
         let isFenceActive = false;
         let lastHeartbeat = Date.now();
         let heartbeatTimer = null;
-        let currentMode = "HOME";
+        let currentMode = "Walk"; // Default to Walk
 
         // Bluetooth State
         let bleDevice = null;
@@ -756,7 +756,7 @@
             setConnectionStatus(true);
 
             // --- Location Logic ---
-            if (data.lat && data.lng) {
+            if (data.lat !== undefined && data.lng !== undefined) {
                 const lat = parseFloat(data.lat);
                 const lng = parseFloat(data.lng);
 
@@ -796,39 +796,31 @@
                 checkGeofence();
                 updateDistance();
 
-                // LBS vs GPS Visuals
-                if (data.type === 'LBS') {
+                // LBS vs GPS Visuals (UPDATED)
+                if (data.fix === 2) {
                     // Show LBS Circle
                     locationCircle.setLatLng(newPos);
                     locationCircle.setRadius(500); // Fixed 500m for LBS
                     locationCircle.setStyle({ opacity: 1, fillOpacity: 0.2 });
 
-                    // Optional: Change marker color or icon for LBS? 
-                    // User Request: "Show a Blue Marker" (Default is Blue) 
-                    // Main marker is already blue.
+                    // LBS Label
+                    document.getElementById('gps-val').innerText = "LBS FIX";
+                    document.getElementById('gps-val').className = "status-pill gps-search";
                 } else {
                     // GPS or others -> Hide LBS Circle
                     locationCircle.setStyle({ opacity: 0, fillOpacity: 0 });
+                    document.getElementById('gps-val').innerText = "GPS FIX";
+                    document.getElementById('gps-val').className = "status-pill gps-fix";
                 }
             }
 
             // --- Status Overlays ---
-            if (data.sats !== undefined) {
-                document.getElementById('sats-val').innerText = data.sats;
-            }
-
-            if (data.gps) {
-                const el = document.getElementById('gps-val');
-                // If data.type is LBS, maybe we shouldn't show GPS-FIX?
-                // But sticking to payload data:
-                el.innerText = data.gps;
-                el.className = `status-pill ${data.gps === 'FIX' ? 'gps-fix' : 'gps-search'}`;
-            }
+            // Removed SATS and CSQ updates as they are not in new payload logic
 
             // --- Battery (Voltage to %) ---
-            if (data.bat) {
-                // "bat":"4.10"
-                const volt = parseFloat(data.bat);
+            if (data.batt) {
+                // "batt": 4.10 (float)
+                const volt = parseFloat(data.batt);
                 // Simple Linear Mapping: 3.4V (0%) -> 4.2V (100%)
                 let pct = 0;
                 if (volt >= 4.2) pct = 100;
@@ -836,18 +828,6 @@
                 else pct = ((volt - 3.4) / (4.2 - 3.4)) * 100;
 
                 document.getElementById('bat-val').innerText = Math.round(pct) + '%';
-            }
-
-            // --- Signal Strength (CSQ) ---
-            if (data.csq) {
-                const csq = parseInt(data.csq);
-                // Map CSQ (0-31) to bars
-                let bars = "No Sig";
-                if (csq >= 20) bars = "IIII"; // Excellent
-                else if (csq >= 15) bars = "III"; // Good
-                else if (csq >= 10) bars = "II";  // Fair
-                else if (csq > 0) bars = "I";     // Poor
-                document.getElementById('csq-val').innerText = bars;
             }
 
             if (data.mode) {
@@ -881,8 +861,8 @@
             if (heartbeatTimer) clearInterval(heartbeatTimer);
             heartbeatTimer = setInterval(() => {
                 const diff = (Date.now() - lastHeartbeat) / 1000;
-                // Changed from 120 to 360 seconds (6 minutes) to accommodate POWER_SAVING mode (5 min interval)
-                if (diff > 360) {
+                // 3900 seconds (65 minutes) to accommodate HOME mode (60 min interval) + 5 min buffer
+                if (diff > 3900) {
                     setConnectionStatus(false);
                 }
             }, 5000);
@@ -990,12 +970,14 @@
 
             // Map mode status to button IDs
             const mapId = {
+                'Home': 'btn-home',
+                'Walk': 'btn-walk',
+                'Lost': 'btn-lost',
+                'Power_Saving': 'btn-save',
                 'HOME': 'btn-home',
                 'WALK': 'btn-walk',
                 'LOST': 'btn-lost',
-                'SAVE': 'btn-save',
-                'POWER_SAVING': 'btn-save',  // Map POWER_SAVING to SAVE button
-                'LIVE': 'btn-walk'  // Map LIVE to WALK button if needed
+                'SAVE': 'btn-save'
             };
 
             if (mapId[currentMode]) {
